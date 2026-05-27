@@ -1335,7 +1335,7 @@ export default function Home() {
                 {/* Max Delay */}
                 <div className="bg-white border border-slate-200 p-3 rounded-xl text-center">
                   <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">Max Msg Delay</div>
-                  <div className="text-sm font-black text-slate-900">15 Seconds</div>
+                  <div className="text-sm font-black text-slate-900">10 Seconds</div>
                 </div>
                 {/* Batch Size */}
                 <div className="bg-white border border-slate-200 p-3 rounded-xl text-center">
