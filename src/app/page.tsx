@@ -166,14 +166,18 @@ export default function Home() {
     socketRef.current.on('session_update', (updatedSession: Session) => {
       setSessions(prev => {
         const idx = prev.findIndex(s => s.id === updatedSession.id);
+        const newSessions = [...prev];
         if (idx !== -1) {
-          const newSessions = [...prev];
           newSessions[idx] = updatedSession;
-          return newSessions;
         } else {
-          return [...prev, updatedSession];
+          newSessions.push(updatedSession);
         }
+        return newSessions;
       });
+
+      if (updatedSession.status === 'CONNECTED') {
+        setSelectedSessionId(updatedSession.id);
+      }
     });
 
     socketRef.current.on('session_deleted', ({ id }: { id: string }) => {
@@ -264,10 +268,17 @@ export default function Home() {
     setLoadingSessions(true);
     try {
       const res = await fetch(`${API_URL}/api/sessions`);
-      const data = await res.json();
+      const data: Session[] = await res.json();
       setSessions(data);
-      if (data.length > 0 && !selectedSessionId) {
-        setSelectedSessionId(data[0].id);
+      
+      const connected = data.filter(s => s.status === 'CONNECTED');
+      if (connected.length > 0) {
+        setSelectedSessionId(prev => {
+          const currentIsConnected = connected.some(s => s.id === prev);
+          return currentIsConnected ? prev : connected[0].id;
+        });
+      } else if (data.length > 0) {
+        setSelectedSessionId(prev => prev || data[0].id);
       }
     } catch (err) {
       console.error('Error fetching sessions:', err);
@@ -592,6 +603,11 @@ export default function Home() {
     }
     if (!selectedSessionId) {
       alert('Please select a WhatsApp session');
+      return;
+    }
+    const targetSession = sessions.find(s => s.id === selectedSessionId);
+    if (!targetSession || targetSession.status !== 'CONNECTED') {
+      alert('The selected WhatsApp session is disconnected/offline. Please link and connect your device first.');
       return;
     }
     if (parsedContacts.length === 0) {
@@ -1114,11 +1130,13 @@ export default function Home() {
                     className="px-4 py-2.5 bg-slate-50 border border-slate-200 hover:border-slate-350 focus:border-emerald-500 focus:bg-white rounded-xl text-sm font-semibold outline-none transition-all"
                   >
                     <option value="" disabled>-- Select Session --</option>
-                    {sessions.map(s => (
-                      <option key={s.id} value={s.id} disabled={s.status !== 'CONNECTED'}>
-                        {s.name} ({s.status === 'CONNECTED' ? 'CONNECTED' : `Offline - ${s.status}`})
-                      </option>
-                    ))}
+                    {[...sessions]
+                      .sort((a, b) => (b.status === 'CONNECTED' ? 1 : 0) - (a.status === 'CONNECTED' ? 1 : 0))
+                      .map(s => (
+                        <option key={s.id} value={s.id} disabled={s.status !== 'CONNECTED'}>
+                          {s.status === 'CONNECTED' ? '🟢' : '🔴'} {s.name} ({s.status === 'CONNECTED' ? 'CONNECTED' : `Offline - ${s.status}`})
+                        </option>
+                      ))}
                   </select>
                 )}
               </div>
