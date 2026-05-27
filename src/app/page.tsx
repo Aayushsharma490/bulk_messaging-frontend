@@ -410,13 +410,31 @@ export default function Home() {
           
           rawData.forEach((row) => {
             // Find key that contains "phone", "number", or "mobile" case-insensitive
-            const phoneKey = Object.keys(row).find(key => 
+            let phoneKey = Object.keys(row).find(key => 
               /phone|number|mobile/i.test(key)
             );
             // Find key that contains "name" case-insensitive
-            const nameKey = Object.keys(row).find(key => 
+            let nameKey = Object.keys(row).find(key => 
               /name/i.test(key)
             );
+
+            // FALLBACK 1: If no phone key, look for any column containing a value that looks like a phone number (>= 8 digits)
+            if (!phoneKey) {
+              phoneKey = Object.keys(row).find(key => {
+                const val = row[key]?.toString().trim();
+                return val && val.replace(/[^0-9]/g, '').length >= 8;
+              });
+            }
+
+            // FALLBACK 2: If still no phone key, and there is only one column in the sheet, use it!
+            if (!phoneKey && Object.keys(row).length === 1) {
+              phoneKey = Object.keys(row)[0];
+            }
+
+            // FALLBACK 3: If no name key, but we have a phone key, and other columns exist, use the first non-phone column as name!
+            if (!nameKey && phoneKey) {
+              nameKey = Object.keys(row).find(key => key !== phoneKey);
+            }
 
             const phone = phoneKey ? row[phoneKey]?.toString().trim() : '';
             const name = nameKey ? row[nameKey]?.toString().trim() : '';
