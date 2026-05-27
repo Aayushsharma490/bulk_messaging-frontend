@@ -26,8 +26,8 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
-// Backend API URL (Uses environment variable in production, falls back to localhost locally)
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+// Backend API URL
+const API_URL = 'http://localhost:5000';
 
 interface Session {
   id: string;
