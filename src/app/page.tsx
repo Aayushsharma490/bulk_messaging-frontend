@@ -404,53 +404,110 @@ export default function Home() {
           const workbook = XLSX.read(binaryStr, { type: 'binary' });
           const firstSheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[firstSheetName];
-          const rawData = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet);
-
-          const contacts: typeof parsedContacts = [];
           
-          rawData.forEach((row) => {
-            // Find key that contains "phone", "number", or "mobile" case-insensitive
-            let phoneKey = Object.keys(row).find(key => 
-              /phone|number|mobile/i.test(key)
-            );
-            // Find key that contains "name" case-insensitive
-            let nameKey = Object.keys(row).find(key => 
-              /name/i.test(key)
-            );
+          // Parse as raw 2D array of cells (header: 1) to perfectly capture files without column names/headers
+          const rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1 });
+          const contacts: typeof parsedContacts = [];
 
-            // FALLBACK 1: If no phone key, look for any column containing a value that looks like a phone number (>= 8 digits)
-            if (!phoneKey) {
-              phoneKey = Object.keys(row).find(key => {
-                const val = row[key]?.toString().trim();
-                return val && val.replace(/[^0-9]/g, '').length >= 8;
-              });
-            }
-
-            // FALLBACK 2: If still no phone key, and there is only one column in the sheet, use it!
-            if (!phoneKey && Object.keys(row).length === 1) {
-              phoneKey = Object.keys(row)[0];
-            }
-
-            // FALLBACK 3: If no name key, but we have a phone key, and other columns exist, use the first non-phone column as name!
-            if (!nameKey && phoneKey) {
-              nameKey = Object.keys(row).find(key => key !== phoneKey);
-            }
-
-            const phone = phoneKey ? row[phoneKey]?.toString().trim() : '';
-            const name = nameKey ? row[nameKey]?.toString().trim() : '';
-
-            // Extract custom fields (all columns other than name and phone)
-            const customFields: Record<string, string> = {};
-            Object.keys(row).forEach((key) => {
-              if (key !== phoneKey && key !== nameKey) {
-                customFields[key] = row[key]?.toString().trim() || '';
-              }
+          if (rawRows.length > 0) {
+            // Find maximum columns present in any row
+            let maxCols = 0;
+            rawRows.forEach(r => {
+              if (r.length > maxCols) maxCols = r.length;
             });
 
-            if (phone) {
-              contacts.push({ name, phone, customFields });
+            let phoneIndex = -1;
+            let nameIndex = -1;
+
+            // Detect if the first row is a header row by matching keywords
+            const firstRow = rawRows[0] || [];
+            const hasHeaders = firstRow.some(cell => 
+              cell && /phone|number|mobile|name|email|contact/i.test(cell.toString())
+            );
+
+            // Step 1: Match by header keywords
+            if (hasHeaders) {
+              for (let c = 0; c < firstRow.length; c++) {
+                const cellVal = firstRow[c]?.toString().trim() || '';
+                if (/phone|number|mobile/i.test(cellVal)) {
+                  phoneIndex = c;
+                }
+                if (/name/i.test(cellVal)) {
+                  nameIndex = c;
+                }
+              }
             }
-          });
+
+            // Step 2: Fallback - Scan column values to find which column holds phone numbers (mostly digits, >= 8 chars)
+            if (phoneIndex === -1) {
+              for (let c = 0; c < maxCols; c++) {
+                let phoneMatches = 0;
+                let totalChecked = 0;
+                
+                // Scan first 15 rows for this column
+                for (let r = 0; r < Math.min(rawRows.length, 15); r++) {
+                  const cellVal = rawRows[r][c]?.toString().trim();
+                  if (cellVal) {
+                    totalChecked++;
+                    const digits = cellVal.replace(/[^0-9]/g, '');
+                    if (digits.length >= 8) {
+                      phoneMatches++;
+                    }
+                  }
+                }
+                
+                // If more than 50% of the non-empty cells contain phone-like digits, mark this as the phone column!
+                if (totalChecked > 0 && (phoneMatches / totalChecked) >= 0.5) {
+                  phoneIndex = c;
+                  break;
+                }
+              }
+            }
+
+            // Step 3: If still not found, and there is only 1 column, default to index 0
+            if (phoneIndex === -1 && maxCols === 1) {
+              phoneIndex = 0;
+            }
+
+            // Step 4: Fallback for name - use the first column that isn't the phone column
+            if (nameIndex === -1 && phoneIndex !== -1) {
+              for (let c = 0; c < maxCols; c++) {
+                if (c !== phoneIndex) {
+                  nameIndex = c;
+                  break;
+                }
+              }
+            }
+
+            // Extract rows into contacts
+            const startRow = hasHeaders ? 1 : 0;
+            const headerNames = hasHeaders ? firstRow.map(h => h?.toString().trim() || '') : [];
+
+            for (let r = startRow; r < rawRows.length; r++) {
+              const row = rawRows[r];
+              if (!row || row.length === 0) continue;
+
+              const phoneVal = phoneIndex !== -1 ? row[phoneIndex]?.toString().trim() : '';
+              const nameVal = nameIndex !== -1 ? row[nameIndex]?.toString().trim() : '';
+
+              if (!phoneVal) continue;
+
+              // Extract any other columns as custom fields (using header name, or Column_N if no header)
+              const customFields: Record<string, string> = {};
+              for (let c = 0; c < row.length; c++) {
+                if (c !== phoneIndex && c !== nameIndex) {
+                  const colName = (hasHeaders && headerNames[c]) ? headerNames[c] : `Field_${c + 1}`;
+                  customFields[colName] = row[c]?.toString().trim() || '';
+                }
+              }
+
+              contacts.push({
+                name: nameVal || '',
+                phone: phoneVal,
+                customFields
+              });
+            }
+          }
 
           setParsedContacts(contacts);
           setParsedFileStats(`Successfully parsed ${contacts.length} rows from file ${file.name}`);
@@ -1278,7 +1335,7 @@ export default function Home() {
                 {/* Max Delay */}
                 <div className="bg-white border border-slate-200 p-3 rounded-xl text-center">
                   <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">Max Msg Delay</div>
-                  <div className="text-sm font-black text-slate-900">20 Seconds</div>
+                  <div className="text-sm font-black text-slate-900">15 Seconds</div>
                 </div>
                 {/* Batch Size */}
                 <div className="bg-white border border-slate-200 p-3 rounded-xl text-center">
