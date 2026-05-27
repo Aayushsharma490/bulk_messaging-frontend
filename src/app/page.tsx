@@ -27,7 +27,7 @@ import {
 import confetti from 'canvas-confetti';
 
 // Backend API URL
-const API_URL = 'http://localhost:5000';
+const API_URL = 'https://bulkmessaging-backend-production.up.railway.app';
 
 interface Session {
   id: string;
