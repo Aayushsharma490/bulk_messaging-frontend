@@ -99,6 +99,12 @@ export default function Home() {
   const [campaignMessages, setCampaignMessages] = useState<Message[]>([]);
   const [campaignLogs, setCampaignLogs] = useState<LogEntry[]>([]);
 
+  // Ref tracking selectedCampaignId to keep socket connection stable
+  const selectedCampaignIdRef = useRef<string>(selectedCampaignId);
+  useEffect(() => {
+    selectedCampaignIdRef.current = selectedCampaignId;
+  }, [selectedCampaignId]);
+
   // Loading States
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
@@ -192,7 +198,7 @@ export default function Home() {
       });
 
       // If this campaign is the currently active/selected one, refresh stats/logs
-      if (selectedCampaignId === updatedCampaign.id) {
+      if (selectedCampaignIdRef.current === updatedCampaign.id) {
         refreshSelectedCampaignDetails(updatedCampaign.id);
 
         // Confetti when campaign transitions to completed
@@ -208,7 +214,7 @@ export default function Home() {
 
     socketRef.current.on('message_status', (data: { messageId: string; status: 'sent' | 'failed'; campaignId: string }) => {
       // If we are viewing the campaign, update the messages list dynamically
-      if (selectedCampaignId === data.campaignId) {
+      if (selectedCampaignIdRef.current === data.campaignId) {
         setCampaignMessages(prev => {
           return prev.map(m => {
             if (m.id === data.messageId) {
@@ -227,7 +233,7 @@ export default function Home() {
         socketRef.current.disconnect();
       }
     };
-  }, [selectedCampaignId]);
+  }, []);
 
   // Scroll terminal logs to bottom on new logs
   useEffect(() => {
