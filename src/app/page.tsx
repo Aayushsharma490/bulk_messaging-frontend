@@ -1241,54 +1241,38 @@ export default function Home() {
             <div className="border-t border-slate-100 pt-4"></div>
 
             {/* QUEUE & ENGINE SETTINGS (ANTI-BAN MECHANISMS) */}
-            <div className="flex flex-col gap-4">
-              <label className="text-xs font-bold text-slate-900 uppercase">3. Delivery Safety Engine (Anti-Ban Controls)</label>
+            <div className="flex flex-col gap-4 bg-emerald-50/40 p-5 rounded-2xl border border-emerald-100">
+              <div className="flex items-center gap-2">
+                <Info className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                <label className="text-xs font-bold text-slate-900 uppercase">3. Delivery Safety Engine (Auto-Configured)</label>
+              </div>
               
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              <p className="text-xs text-slate-600 font-semibold leading-relaxed">
+                To safeguard your phone number from WhatsApp ban risks, safe sending limits have been hardcoded on the server. The campaign will execute automatically with the following parameters:
+              </p>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-1">
                 {/* Min Delay */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[11px] font-bold text-slate-650">Min Delay (Seconds)</label>
-                  <input 
-                    type="number" 
-                    value={minDelay}
-                    onChange={(e) => setMinDelay(Math.max(1, parseInt(e.target.value, 10)))}
-                    className="p-2.5 bg-slate-50 border border-slate-200 focus:bg-white rounded-xl text-sm font-semibold outline-none"
-                  />
+                <div className="bg-white border border-slate-200 p-3 rounded-xl text-center">
+                  <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">Min Msg Delay</div>
+                  <div className="text-sm font-black text-slate-900">5 Seconds</div>
                 </div>
                 {/* Max Delay */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[11px] font-bold text-slate-650">Max Delay (Seconds)</label>
-                  <input 
-                    type="number" 
-                    value={maxDelay}
-                    onChange={(e) => setMaxDelay(Math.max(minDelay, parseInt(e.target.value, 10)))}
-                    className="p-2.5 bg-slate-50 border border-slate-200 focus:bg-white rounded-xl text-sm font-semibold outline-none"
-                  />
+                <div className="bg-white border border-slate-200 p-3 rounded-xl text-center">
+                  <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">Max Msg Delay</div>
+                  <div className="text-sm font-black text-slate-900">20 Seconds</div>
                 </div>
                 {/* Batch Size */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[11px] font-bold text-slate-650">Batch Size (Contacts)</label>
-                  <input 
-                    type="number" 
-                    value={batchSize}
-                    onChange={(e) => setBatchSize(Math.max(1, parseInt(e.target.value, 10)))}
-                    className="p-2.5 bg-slate-50 border border-slate-200 focus:bg-white rounded-xl text-sm font-semibold outline-none"
-                  />
+                <div className="bg-white border border-slate-200 p-3 rounded-xl text-center">
+                  <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">Batch Size</div>
+                  <div className="text-sm font-black text-slate-900">200 Contacts</div>
                 </div>
                 {/* Batch Cooldown */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[11px] font-bold text-slate-650">Batch Cooldown (Sec)</label>
-                  <input 
-                    type="number" 
-                    value={batchCooldown}
-                    onChange={(e) => setBatchCooldown(Math.max(10, parseInt(e.target.value, 10)))}
-                    className="p-2.5 bg-slate-50 border border-slate-200 focus:bg-white rounded-xl text-sm font-semibold outline-none"
-                  />
+                <div className="bg-white border border-slate-200 p-3 rounded-xl text-center">
+                  <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">Batch Cooldown</div>
+                  <div className="text-sm font-black text-slate-900">5 Minutes</div>
                 </div>
               </div>
-              <span className="text-[10px] text-slate-400 font-semibold leading-relaxed">
-                * Safe defaults are configured automatically (delays: 20-45s, batch: 200 messages, cooldown: 5 mins). These mimic human actions to safeguard your numbers from ban risks.
-              </span>
             </div>
 
             <div className="border-t border-slate-100 pt-4"></div>
