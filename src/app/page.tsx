@@ -379,6 +379,45 @@ export default function Home() {
     }
   };
 
+  const handleDeleteCampaign = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (!confirm('Are you sure you want to delete this campaign and all its queued messages?')) return;
+    try {
+      const res = await fetch(`${API_URL}/api/campaigns/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setCampaigns(prev => prev.filter(c => c.id !== id));
+        if (selectedCampaignId === id) {
+          setSelectedCampaignId('');
+          setCampaignMessages([]);
+          setCampaignLogs([]);
+        }
+      } else {
+        alert('Failed to delete campaign');
+      }
+    } catch (err: any) {
+      console.error('Error deleting campaign:', err);
+      alert(`Error: ${err.message}`);
+    }
+  };
+
+  const handleDeleteAllCampaigns = async () => {
+    if (!confirm('Are you sure you want to delete all campaigns, queued messages, and logs? Connected WhatsApp sessions will remain active. This cannot be undone.')) return;
+    try {
+      const res = await fetch(`${API_URL}/api/admin/reset`, { method: 'POST' });
+      if (res.ok) {
+        setCampaigns([]);
+        setSelectedCampaignId('');
+        setCampaignMessages([]);
+        setCampaignLogs([]);
+      } else {
+        alert('Failed to reset database');
+      }
+    } catch (err: any) {
+      console.error('Error resetting database:', err);
+      alert(`Error: ${err.message}`);
+    }
+  };
+
   // --- CONTACT IMPORT PARSERS ---
   const handleManualNumbersChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
@@ -795,7 +834,18 @@ export default function Home() {
             {/* Left side: Campaigns list */}
             <div className="lg:col-span-1 flex flex-col gap-4">
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs animated-card-border">
-                <h2 className="text-lg font-black text-slate-900 mb-3 uppercase tracking-wide border-b border-slate-100 pb-2">Campaigns</h2>
+                <div className="flex justify-between items-center border-b border-slate-100 pb-2 mb-3">
+                  <h2 className="text-lg font-black text-slate-900 uppercase tracking-wide">Campaigns</h2>
+                  {campaigns.length > 0 && (
+                    <button
+                      onClick={handleDeleteAllCampaigns}
+                      className="text-xs text-rose-600 hover:text-rose-700 font-extrabold flex items-center gap-1 transition-colors"
+                      title="Delete all campaigns, messages, and logs"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Clear All
+                    </button>
+                  )}
+                </div>
                 
                 {loadingCampaigns ? (
                   <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-2">
@@ -832,20 +882,33 @@ export default function Home() {
                           }`}
                         >
                           <div className="flex justify-between items-start gap-2 mb-1.5">
-                            <h3 className="font-extrabold text-sm truncate max-w-[150px]">{camp.name}</h3>
-                            <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
-                              camp.status === 'running' 
-                                ? 'bg-emerald-500 text-white' 
-                                : camp.status === 'paused' 
-                                ? 'bg-amber-500 text-white' 
-                                : camp.status === 'completed' 
-                                ? 'bg-blue-600 text-white' 
-                                : camp.status === 'scheduled'
-                                ? 'bg-violet-600 text-white'
-                                : 'bg-rose-500 text-white'
-                            }`}>
-                              {camp.status}
-                            </span>
+                            <h3 className="font-extrabold text-sm truncate max-w-[120px]">{camp.name}</h3>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                                camp.status === 'running' 
+                                  ? 'bg-emerald-500 text-white' 
+                                  : camp.status === 'paused' 
+                                  ? 'bg-amber-500 text-white' 
+                                  : camp.status === 'completed' 
+                                  ? 'bg-blue-600 text-white' 
+                                  : camp.status === 'scheduled'
+                                  ? 'bg-violet-600 text-white'
+                                  : 'bg-rose-500 text-white'
+                              }`}>
+                                {camp.status}
+                              </span>
+                              <button
+                                onClick={(e) => handleDeleteCampaign(e, camp.id)}
+                                className={`p-1 rounded-md transition-colors ${
+                                  isActive
+                                    ? 'hover:bg-slate-800 text-slate-400 hover:text-rose-450'
+                                    : 'hover:bg-slate-100 text-slate-400 hover:text-rose-600'
+                                }`}
+                                title="Delete campaign"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
                           
                           <div className="flex justify-between text-[11px] font-semibold mb-2 opacity-80">
