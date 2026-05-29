@@ -26,8 +26,10 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
-// Backend API URL
-const API_URL = 'https://bulkmessaging-backend-production.up.railway.app';
+// Backend API URL — set NEXT_PUBLIC_API_URL in .env.local for local dev
+// or in Railway/Vercel environment variables for production
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://bulkmessaging-backend-production.up.railway.app';
+const ADMIN_API_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || '';
 
 interface Session {
   id: string;
@@ -84,6 +86,14 @@ interface LogEntry {
   message: string;
 }
 
+// Anti-ban limits fetched from backend (real server values)
+interface SafeLimits {
+  minDelay: number;
+  maxDelay: number;
+  batchSize: number;
+  batchCooldownMinutes: number;
+}
+
 export default function Home() {
   // Navigation & Tabs
   const [activeTab, setActiveTab] = useState<'dashboard' | 'create' | 'sessions'>('dashboard');
@@ -98,6 +108,14 @@ export default function Home() {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>('');
   const [campaignMessages, setCampaignMessages] = useState<Message[]>([]);
   const [campaignLogs, setCampaignLogs] = useState<LogEntry[]>([]);
+
+  // Anti-ban limits from server
+  const [safeLimits, setSafeLimits] = useState<SafeLimits>({
+    minDelay: 20,
+    maxDelay: 45,
+    batchSize: 50,
+    batchCooldownMinutes: 15
+  });
 
   // Ref tracking selectedCampaignId to keep socket connection stable
   const selectedCampaignIdRef = useRef<string>(selectedCampaignId);
@@ -136,10 +154,6 @@ export default function Home() {
   const [manualNumbers, setManualNumbers] = useState('');
   const [parsedContacts, setParsedContacts] = useState<{ name: string; phone: string; customFields: Record<string, string> }[]>([]);
   const [parsedFileStats, setParsedFileStats] = useState<string>('');
-  const [batchSize, setBatchSize] = useState<number>(200);
-  const [batchCooldown, setBatchCooldown] = useState<number>(300); // 5 minutes
-  const [minDelay, setMinDelay] = useState<number>(20);
-  const [maxDelay, setMaxDelay] = useState<number>(45);
   const [isScheduled, setIsScheduled] = useState(false);
   const [scheduledDate, setScheduledDate] = useState('');
   const [mediaFile, setMediaFile] = useState<File | null>(null);
@@ -151,6 +165,7 @@ export default function Home() {
   useEffect(() => {
     fetchSessions();
     fetchCampaigns();
+    fetchSafeLimits();
 
     // Setup Socket
     socketRef.current = io(API_URL);
@@ -245,6 +260,19 @@ export default function Home() {
       logTerminalEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [campaignLogs]);
+
+  // Fetch safe limits from backend
+  const fetchSafeLimits = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/config/limits`);
+      if (res.ok) {
+        const data = await res.json();
+        setSafeLimits(data);
+      }
+    } catch (err) {
+      console.error('Error fetching safe limits:', err);
+    }
+  };
 
   // Fetch all campaigns and select first one if dashboard is open
   const fetchCampaigns = async (selectFirst = false) => {
@@ -403,7 +431,10 @@ export default function Home() {
   const handleDeleteAllCampaigns = async () => {
     if (!confirm('Are you sure you want to delete all campaigns, queued messages, and logs? Connected WhatsApp sessions will remain active. This cannot be undone.')) return;
     try {
-      const res = await fetch(`${API_URL}/api/admin/reset`, { method: 'POST' });
+      const res = await fetch(`${API_URL}/api/admin/reset`, {
+        method: 'POST',
+        headers: { 'x-api-key': ADMIN_API_KEY }
+      });
       if (res.ok) {
         setCampaigns([]);
         setSelectedCampaignId('');
@@ -669,10 +700,8 @@ export default function Home() {
       formData.append('messageMode', messageMode);
       formData.append('templatesJson', JSON.stringify(filteredTemplates));
       formData.append('contactsJson', JSON.stringify(parsedContacts));
-      formData.append('batchSize', batchSize.toString());
-      formData.append('batchCooldown', batchCooldown.toString());
-      formData.append('minDelay', minDelay.toString());
-      formData.append('maxDelay', maxDelay.toString());
+      // Note: batchSize, batchCooldown, minDelay, maxDelay are enforced server-side
+      // and cannot be overridden from the frontend for security.
 
       if (isScheduled && scheduledDate) {
         formData.append('scheduledAt', new Date(scheduledDate).toISOString());
@@ -1410,30 +1439,34 @@ export default function Home() {
               </div>
               
               <p className="text-xs text-slate-600 font-semibold leading-relaxed">
-                To safeguard your phone number from WhatsApp ban risks, safe sending limits have been hardcoded on the server. The campaign will execute automatically with the following parameters:
+                🛡️ To safeguard your WhatsApp number from ban risks, safe limits are <strong>enforced on the server</strong> and cannot be overridden. The campaign will execute with the following parameters:
               </p>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-1">
                 {/* Min Delay */}
-                <div className="bg-white border border-slate-200 p-3 rounded-xl text-center">
-                  <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">Min Msg Delay</div>
-                  <div className="text-sm font-black text-slate-900">5 Seconds</div>
+                <div className="bg-white border border-emerald-200 p-3 rounded-xl text-center">
+                  <div className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider mb-1">Min Msg Delay</div>
+                  <div className="text-sm font-black text-slate-900">{safeLimits.minDelay}s</div>
                 </div>
                 {/* Max Delay */}
-                <div className="bg-white border border-slate-200 p-3 rounded-xl text-center">
-                  <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">Max Msg Delay</div>
-                  <div className="text-sm font-black text-slate-900">10 Seconds</div>
+                <div className="bg-white border border-emerald-200 p-3 rounded-xl text-center">
+                  <div className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider mb-1">Max Msg Delay</div>
+                  <div className="text-sm font-black text-slate-900">{safeLimits.maxDelay}s</div>
                 </div>
                 {/* Batch Size */}
-                <div className="bg-white border border-slate-200 p-3 rounded-xl text-center">
-                  <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">Batch Size</div>
-                  <div className="text-sm font-black text-slate-900">200 Contacts</div>
+                <div className="bg-white border border-emerald-200 p-3 rounded-xl text-center">
+                  <div className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider mb-1">Batch Size</div>
+                  <div className="text-sm font-black text-slate-900">{safeLimits.batchSize} msgs</div>
                 </div>
                 {/* Batch Cooldown */}
-                <div className="bg-white border border-slate-200 p-3 rounded-xl text-center">
-                  <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">Batch Cooldown</div>
-                  <div className="text-sm font-black text-slate-900">5 Minutes</div>
+                <div className="bg-white border border-emerald-200 p-3 rounded-xl text-center">
+                  <div className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider mb-1">Batch Cooldown</div>
+                  <div className="text-sm font-black text-slate-900">{safeLimits.batchCooldownMinutes} min</div>
                 </div>
+              </div>
+
+              <div className="text-[10px] text-emerald-700 font-semibold bg-emerald-100/60 px-3 py-2 rounded-lg border border-emerald-200">
+                ⚡ At {safeLimits.minDelay}–{safeLimits.maxDelay}s per message, a batch of {safeLimits.batchSize} takes ~{Math.round(safeLimits.batchSize * ((safeLimits.minDelay + safeLimits.maxDelay) / 2) / 60)} minutes. Then {safeLimits.batchCooldownMinutes} min cooldown before the next batch.
               </div>
             </div>
 
@@ -1584,7 +1617,7 @@ export default function Home() {
                           ) : session.status === 'CONNECTING' ? (
                             <div className="flex flex-col items-center justify-center py-10 gap-3">
                               <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
-                              <span className="text-xs font-bold text-slate-600">Initializing chromium & requesting pairing token...</span>
+                              <span className="text-xs font-bold text-slate-600">Connecting to WhatsApp servers. Waiting for QR code...</span>
                             </div>
                           ) : (
                             <div className="text-xs text-slate-500 p-4 bg-slate-100 border border-slate-200 rounded-xl text-center flex flex-col items-center gap-2">
