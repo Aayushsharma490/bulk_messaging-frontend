@@ -405,11 +405,20 @@ export default function Home() {
   // --- CAMPAIGN ACTIONS (Pause, Resume, Stop) ---
   const handleCampaignAction = async (action: 'pause' | 'resume' | 'stop', campaignId: string) => {
     try {
-      await fetch(`${API_URL}/api/campaigns/${campaignId}/${action}`, { method: 'POST' });
-      // Reload campaigns
-      fetchCampaigns();
-    } catch (err) {
+      const res = await fetch(`${API_URL}/api/campaigns/${campaignId}/${action}`, { method: 'POST' });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: 'Unknown error' }));
+        alert(`Failed to ${action} campaign: ${errData.error || 'Server error'}`);
+        return;
+      }
+      // Refresh both list and details so UI reflects the change immediately
+      await fetchCampaigns();
+      if (campaignId === selectedCampaignIdRef.current) {
+        fetchCampaignDetails(campaignId);
+      }
+    } catch (err: any) {
       console.error(`Error performing campaign action ${action}:`, err);
+      alert(`Network error: Could not ${action} campaign. Check your connection.`);
     }
   };
 
@@ -759,7 +768,7 @@ export default function Home() {
 
       const resData = await res.json();
       
-      // Reset Form
+      // Reset Form — including guidelines so modal shows again next campaign
       setCampaignName('');
       setTemplates(['Hello {name}, welcome to our service.']);
       setParsedContacts([]);
@@ -768,6 +777,7 @@ export default function Home() {
       setMediaFile(null);
       setIsScheduled(false);
       setScheduledDate('');
+      setGuidelinesConfirmed(false); // IMPORTANT: forces guidelines modal on next campaign
 
       // Refresh campaigns and auto-select new campaign
       await fetchCampaigns(true);
