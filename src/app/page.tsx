@@ -158,6 +158,12 @@ export default function Home() {
   const [scheduledDate, setScheduledDate] = useState('');
   const [mediaFile, setMediaFile] = useState<File | null>(null);
 
+  // Guidelines Modal state
+  const [showGuidelinesModal, setShowGuidelinesModal] = useState(false);
+  const [guidelinesConfirmed, setGuidelinesConfirmed] = useState(false);
+  const [guidelinesCountdown, setGuidelinesCountdown] = useState(3);
+  const [pendingSubmitEvent, setPendingSubmitEvent] = useState<React.FormEvent | null>(null);
+
   // Scroll ref for logs terminal
   const logTerminalEndRef = useRef<HTMLDivElement>(null);
 
@@ -663,10 +669,31 @@ export default function Home() {
     setTemplates(next);
   };
 
-  // --- SUBMIT CAMPAIGN ---
+  // Intercept form submit — show guidelines modal first if not yet confirmed
   const handleCreateCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!guidelinesConfirmed) {
+      setPendingSubmitEvent(e);
+      setGuidelinesCountdown(3);
+      setGuidelinesConfirmed(false);
+      setShowGuidelinesModal(true);
+      return;
+    }
+    await submitCampaign(e);
+  };
 
+  // Called once user confirms guidelines
+  const handleGuidelinesConfirm = async () => {
+    setShowGuidelinesModal(false);
+    setGuidelinesConfirmed(true);
+    if (pendingSubmitEvent) {
+      await submitCampaign(pendingSubmitEvent);
+      setPendingSubmitEvent(null);
+    }
+  };
+
+  // Actual campaign creation logic
+  const submitCampaign = async (e: React.FormEvent) => {
     if (!campaignName.trim()) {
       alert('Please enter a campaign name');
       return;
@@ -766,8 +793,144 @@ export default function Home() {
 
   const selectedCampaign = getSelectedCampaign();
 
+  // Countdown effect for guidelines modal
+  useEffect(() => {
+    if (!showGuidelinesModal) return;
+    if (guidelinesCountdown <= 0) return;
+    const timer = setTimeout(() => setGuidelinesCountdown(c => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [showGuidelinesModal, guidelinesCountdown]);
+
   return (
     <div className="flex-1 flex flex-col bg-slate-50 bg-grid min-h-screen">
+
+      {/* ── PRE-CAMPAIGN GUIDELINES MODAL ── */}
+      {showGuidelinesModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" style={{background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)'}}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-t-2xl p-6 text-white">
+              <div className="flex items-center gap-3 mb-1">
+                <span className="text-3xl">🛡️</span>
+                <div>
+                  <h2 className="text-xl font-black">Read Before You Send</h2>
+                  <p className="text-amber-100 text-sm font-medium">Anti-Ban Guidelines — Read carefully to protect your WhatsApp account</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 flex flex-col gap-5">
+
+              {/* WHY THIS MATTERS */}
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                <p className="text-sm font-bold text-red-800">⚠️ Why this matters: WhatsApp permanently bans accounts that look like spam bots. Once banned, the number cannot be recovered. Follow these rules every time.</p>
+              </div>
+
+              {/* DO'S */}
+              <div>
+                <h3 className="text-sm font-black text-emerald-700 uppercase tracking-wider mb-3 flex items-center gap-2"><span>✅</span> DO — These keep you safe</h3>
+                <div className="flex flex-col gap-2">
+                  {[
+                    ['Use personalized messages', 'Add {name} in your message so each one is slightly different. Identical messages to 500 people = instant spam flag.'],
+                    ['Use a warmed-up number', 'The WhatsApp number should be at least 3–6 months old with normal usage history before bulk sending.'],
+                    ['Send during business hours', 'Send between 9 AM – 8 PM only. Night sending has 3× higher ban rate.'],
+                    ['Keep batches small to start', 'First campaign: max 30–50 contacts. Build up slowly over days. Do not send to 1000 on day 1.'],
+                    ['Use plain text when possible', 'Text-only messages are the safest. Add media only if truly needed.'],
+                    ['Let the system breathe', 'Do not pause/resume repeatedly. Start, let it run, and wait for cooldowns naturally.'],
+                  ].map(([title, desc]) => (
+                    <div key={title} className="flex gap-3 bg-emerald-50 border border-emerald-100 rounded-lg p-3">
+                      <span className="text-emerald-500 font-black text-lg mt-0.5">✓</span>
+                      <div><p className="text-sm font-bold text-slate-800">{title}</p><p className="text-xs text-slate-500 mt-0.5">{desc}</p></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* DON'TS */}
+              <div>
+                <h3 className="text-sm font-black text-red-700 uppercase tracking-wider mb-3 flex items-center gap-2"><span>❌</span> DON&apos;T — These will get you banned</h3>
+                <div className="flex flex-col gap-2">
+                  {[
+                    ['Don\'t send the same message to everyone', 'Copy-paste identical text to 100+ people triggers WhatsApp\'s spam fingerprint system immediately.'],
+                    ['Don\'t include raw links', 'Links like https://... or bit.ly/... in bulk messages are the #1 ban trigger. Use text like "visit our website" instead.'],
+                    ['Don\'t send same image to everyone', 'WhatsApp hashes images. Same image hash to 100+ people = spam detected. Avoid unless necessary.'],
+                    ['Don\'t send link + image + text together', 'This combination is the highest ban risk. Use only one of these at a time.'],
+                    ['Don\'t use a fresh number', 'New numbers (< 3 months) get banned almost immediately on bulk campaigns.'],
+                    ['Don\'t run 24/7 without breaks', 'Real humans don\'t send 500 messages a day non-stop. The system adds auto-breaks — don\'t override them.'],
+                  ].map(([title, desc]) => (
+                    <div key={title} className="flex gap-3 bg-red-50 border border-red-100 rounded-lg p-3">
+                      <span className="text-red-500 font-black text-lg mt-0.5">✗</span>
+                      <div><p className="text-sm font-bold text-slate-800">{title}</p><p className="text-xs text-slate-500 mt-0.5">{desc}</p></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* CURRENT CAMPAIGN LIMITS */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                <p className="text-xs font-black text-slate-600 uppercase tracking-wider mb-2">🤖 Your campaign will run with these human-like settings:</p>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-white rounded-lg p-2 border border-slate-200 text-center">
+                    <div className="font-black text-slate-900">12–46s</div>
+                    <div className="text-slate-500">Random delay (text)</div>
+                  </div>
+                  <div className="bg-white rounded-lg p-2 border border-slate-200 text-center">
+                    <div className="font-black text-slate-900">20–55s</div>
+                    <div className="text-slate-500">Random delay (media)</div>
+                  </div>
+                  <div className="bg-white rounded-lg p-2 border border-slate-200 text-center">
+                    <div className="font-black text-slate-900">50 msgs</div>
+                    <div className="text-slate-500">Per batch max</div>
+                  </div>
+                  <div className="bg-white rounded-lg p-2 border border-slate-200 text-center">
+                    <div className="font-black text-slate-900">15 min</div>
+                    <div className="text-slate-500">Cooldown between batches</div>
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-2">+ Typing indicator is simulated before every message (shows &quot;typing...&quot; to recipient)</p>
+              </div>
+
+              {/* CONFIRM CHECKBOX */}
+              <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4">
+                {guidelinesCountdown > 0 ? (
+                  <p className="text-sm font-bold text-amber-700 text-center">Please read the guidelines above... ({guidelinesCountdown}s)</p>
+                ) : (
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={guidelinesConfirmed}
+                      onChange={e => setGuidelinesConfirmed(e.target.checked)}
+                      className="mt-1 w-5 h-5 accent-emerald-600 cursor-pointer flex-shrink-0"
+                    />
+                    <span className="text-sm font-bold text-slate-800">
+                      I confirm I have read and understood these guidelines. I will use personalized messages, avoid raw links, and not send to fresh/flagged numbers.
+                    </span>
+                  </label>
+                )}
+              </div>
+
+              {/* ACTION BUTTONS */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setShowGuidelinesModal(false); setPendingSubmitEvent(null); }}
+                  className="flex-1 py-3 border-2 border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleGuidelinesConfirm}
+                  disabled={!guidelinesConfirmed || guidelinesCountdown > 0}
+                  className="flex-1 py-3 bg-emerald-600 text-white font-black rounded-xl hover:bg-emerald-700 transition-all disabled:bg-slate-300 disabled:cursor-not-allowed"
+                >
+                  {guidelinesCountdown > 0 ? `Wait... (${guidelinesCountdown}s)` : '✅ I Understand — Launch Campaign'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── END MODAL ── */}
+
       {/* Decorative top ambient bar */}
       <div className="w-full h-1 bg-gradient-to-r from-emerald-400 via-teal-500 to-emerald-600 animate-shimmer" style={{ backgroundSize: '200% 100%' }}></div>
 
