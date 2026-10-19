@@ -272,6 +272,18 @@ export default function Home() {
     };
   }, []);
 
+  // Auto-poll sessions every 3s as fallback while any session is waiting for QR code or connecting
+  useEffect(() => {
+    const hasPending = sessions.some(s => s.status === 'CONNECTING' || s.status === 'QR_READY');
+    if (!hasPending) return;
+
+    const interval = setInterval(() => {
+      fetchSessions();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [sessions]);
+
   // Scroll terminal logs to bottom on new logs
   useEffect(() => {
     if (logTerminalEndRef.current) {
