@@ -27,8 +27,20 @@ import {
 import confetti from 'canvas-confetti';
 
 // Backend API URL — set NEXT_PUBLIC_API_URL in .env.local for local dev
-// or in Railway/Vercel environment variables for production
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://bulkmessaging-backend-production.up.railway.app';
+// or in Railway/Netlify/Vercel environment variables for production
+function getBackendUrl(): string {
+  const envUrl = process.env.NEXT_PUBLIC_API_URL;
+  let url = (envUrl && envUrl.trim().length > 0)
+    ? envUrl.trim()
+    : 'https://bulkmessaging-backend-production-66ce.up.railway.app';
+
+  if (!/^https?:\/\//i.test(url)) {
+    url = `https://${url}`;
+  }
+  return url.replace(/\/+$/, '');
+}
+
+const API_URL = getBackendUrl();
 const ADMIN_API_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || '';
 
 interface Session {
@@ -285,7 +297,15 @@ export default function Home() {
     setLoadingCampaigns(true);
     try {
       const res = await fetch(`${API_URL}/api/campaigns`);
+      if (!res.ok) {
+        console.error(`Error fetching campaigns: Server returned status ${res.status}`);
+        return;
+      }
       const data = await res.json();
+      if (!Array.isArray(data)) {
+        console.error('Expected array for campaigns, received:', data);
+        return;
+      }
       setCampaigns(data);
       if (data.length > 0 && (selectFirst || !selectedCampaignId)) {
         setSelectedCampaignId(data[0].id);
@@ -302,13 +322,21 @@ export default function Home() {
     setLoadingSessions(true);
     try {
       const res = await fetch(`${API_URL}/api/sessions`);
-      const data: Session[] = await res.json();
+      if (!res.ok) {
+        console.error(`Error fetching sessions: Server returned status ${res.status}`);
+        return;
+      }
+      const data = await res.json();
+      if (!Array.isArray(data)) {
+        console.error('Expected array for sessions, received:', data);
+        return;
+      }
       setSessions(data);
       
-      const connected = data.filter(s => s.status === 'CONNECTED');
+      const connected = data.filter((s: Session) => s.status === 'CONNECTED');
       if (connected.length > 0) {
         setSelectedSessionId(prev => {
-          const currentIsConnected = connected.some(s => s.id === prev);
+          const currentIsConnected = connected.some((s: Session) => s.id === prev);
           return currentIsConnected ? prev : connected[0].id;
         });
       } else if (data.length > 0) {
@@ -328,13 +356,17 @@ export default function Home() {
     try {
       // Fetch messages
       const msgRes = await fetch(`${API_URL}/api/campaigns/${campaignId}/messages`);
-      const messages = await msgRes.json();
-      setCampaignMessages(messages);
+      if (msgRes.ok) {
+        const messages = await msgRes.json();
+        setCampaignMessages(Array.isArray(messages) ? messages : []);
+      }
 
       // Fetch logs
       const logRes = await fetch(`${API_URL}/api/campaigns/${campaignId}/logs`);
-      const logs = await logRes.json();
-      setCampaignLogs(logs);
+      if (logRes.ok) {
+        const logs = await logRes.json();
+        setCampaignLogs(Array.isArray(logs) ? logs : []);
+      }
     } catch (err) {
       console.error('Error fetching campaign details:', err);
     } finally {
@@ -346,13 +378,19 @@ export default function Home() {
     try {
       // Fetch logs
       const logRes = await fetch(`${API_URL}/api/campaigns/${campaignId}/logs`);
-      const logs = await logRes.json();
-      setCampaignLogs(logs);
+      if (logRes.ok) {
+        const logs = await logRes.json();
+        setCampaignLogs(Array.isArray(logs) ? logs : []);
+      }
 
       // Reload campaign stats in list
       const res = await fetch(`${API_URL}/api/campaigns`);
-      const data = await res.json();
-      setCampaigns(data);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setCampaigns(data);
+        }
+      }
     } catch (err) {
       console.error('Error auto-refreshing campaign:', err);
     }
@@ -372,13 +410,26 @@ export default function Home() {
       const res = await fetch(`${API_URL}/api/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newSessionName })
+        body: JSON.stringify({ name: newSessionName.trim() })
       });
-      const data = await res.json();
+      if (!res.ok) {
+        let errMsg = 'Failed to create session';
+        try {
+          const errData = await res.json();
+          errMsg = errData.error || errMsg;
+        } catch (_) {
+          const text = await res.text();
+          if (text) errMsg = text;
+        }
+        alert(`Error creating session: ${errMsg}`);
+        return;
+      }
+      await res.json();
       setNewSessionName('');
-      fetchSessions();
-    } catch (err) {
+      await fetchSessions();
+    } catch (err: any) {
       console.error('Error creating session:', err);
+      alert(`Error creating session: ${err?.message || 'Network error'}`);
     } finally {
       setIsCreatingSession(false);
     }
