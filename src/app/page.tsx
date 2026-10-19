@@ -527,33 +527,116 @@ export default function Home() {
     }
   };
 
-  // --- CONTACT IMPORT PARSERS ---
+  // --- CONTACT IMPORT PARSERS & PHONE NORMALIZATION ---
+  // Normalizes numbers to E.164 (without +) - automatically prepends 91 for 10-digit Indian numbers
+  function normalizePhoneNumber(input: any): string {
+    if (!input) return '';
+    const digits = input.toString().replace(/[^0-9]/g, '');
+
+    // 1. 12 digits starting with 91 (e.g. 919893500917)
+    if (digits.length === 12 && digits.startsWith('91') && /^[6-9]/.test(digits[2])) {
+      return digits;
+    }
+    // 2. 11 digits starting with 0 (e.g. 09893500917)
+    if (digits.length === 11 && digits.startsWith('0') && /^[6-9]/.test(digits[1])) {
+      return '91' + digits.slice(1);
+    }
+    // 3. 10 digits starting with 6-9 (standard Indian mobile without 91, e.g. +8827795766 or 9009401807)
+    if (digits.length === 10 && /^[6-9]/.test(digits)) {
+      return '91' + digits;
+    }
+    // 4. Valid international number (10-15 digits)
+    if (digits.length >= 10 && digits.length <= 15) {
+      return digits;
+    }
+    // Anything else (e.g. bank account numbers like 500000086 with <10 digits) is invalid
+    return '';
+  }
+
+  // Parses any multi-line text input:
+  // - Alternating lines (Line 1: Name, Line 2: Phone, Line 3: Name, Line 4: Phone...)
+  // - Delimited: Name, Phone or Phone, Name (comma, tab, semicolon, pipe)
+  // - Plain single numbers or names
+  function parseTextToContacts(text: string) {
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const rawList: { name: string; phone: string; customFields: Record<string, string> }[] = [];
+
+    // Detect alternating pattern: Name followed by Phone
+    let isAlternating = false;
+    if (lines.length >= 2) {
+      let altMatches = 0;
+      const checks = Math.min(lines.length - 1, 10);
+      for (let i = 0; i < checks; i += 2) {
+        const lineA = lines[i];
+        const lineB = lines[i + 1];
+        const aIsPhone = /^\+?[0-9\s\-()]{8,}$/.test(lineA.trim());
+        const bIsPhone = /^\+?[0-9\s\-()]{8,}$/.test(lineB.trim());
+        if (!aIsPhone && bIsPhone) {
+          altMatches++;
+        }
+      }
+      if (altMatches >= Math.floor((checks / 2) * 0.6)) {
+        isAlternating = true;
+      }
+    }
+
+    if (isAlternating) {
+      for (let i = 0; i < lines.length; i += 2) {
+        const name = lines[i];
+        const phone = lines[i + 1] || '';
+        if (phone) {
+          rawList.push({ name, phone, customFields: {} });
+        }
+      }
+    } else {
+      for (const line of lines) {
+        const delimiter = line.includes('\t') ? '\t' : (line.includes(',') ? ',' : (line.includes(';') ? ';' : (line.includes('|') ? '|' : '')));
+        if (delimiter) {
+          const parts = line.split(delimiter).map(p => p.trim());
+          if (parts.length >= 2) {
+            const part0IsPhone = /^\+?[0-9\s\-()]{8,}$/.test(parts[0]);
+            const part1IsPhone = /^\+?[0-9\s\-()]{8,}$/.test(parts[1]);
+            if (part0IsPhone && !part1IsPhone) {
+              rawList.push({ name: parts[1], phone: parts[0], customFields: {} });
+            } else {
+              rawList.push({ name: parts[0], phone: parts[1], customFields: {} });
+            }
+            continue;
+          }
+        }
+        rawList.push({ name: '', phone: line, customFields: {} });
+      }
+    }
+
+    // Deduplicate and normalize
+    const seen = new Set<string>();
+    const validContacts: typeof rawList = [];
+
+    for (const c of rawList) {
+      const clean = normalizePhoneNumber(c.phone);
+      if (!clean) continue;
+      if (seen.has(clean)) continue;
+      seen.add(clean);
+      validContacts.push({
+        name: c.name || '',
+        phone: clean,
+        customFields: c.customFields || {}
+      });
+    }
+
+    return validContacts;
+  }
+
   const handleManualNumbersChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     setManualNumbers(val);
-
-    // Format: name,phone or just phone (one per line)
-    const lines = val.split('\n');
-    const contacts: typeof parsedContacts = [];
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      
-      const parts = line.split(',');
-      if (parts.length >= 2) {
-        contacts.push({
-          name: parts[0].trim(),
-          phone: parts[1].trim(),
-          customFields: {}
-        });
-      } else {
-        contacts.push({
-          name: '',
-          phone: parts[0].trim(),
-          customFields: {}
-        });
-      }
-    }
+    const contacts = parseTextToContacts(val);
     setParsedContacts(contacts);
+    if (contacts.length > 0) {
+      setParsedFileStats(`Ready: ${contacts.length} valid contacts loaded`);
+    } else {
+      setParsedFileStats('');
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -566,12 +649,12 @@ export default function Home() {
       fileReader.onload = (event) => {
         try {
           const binaryStr = event.target?.result;
-          const workbook = XLSX.read(binaryStr, { type: 'binary' });
+          const workbook = XLSX.read(binaryStr, { type: 'binary', raw: false });
           const firstSheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[firstSheetName];
           
-          // Parse as raw 2D array of cells (header: 1) to perfectly capture files without column names/headers
-          const rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1 });
+          // Parse as raw 2D array of cells (header: 1)
+          const rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, raw: false });
           const contacts: typeof parsedContacts = [];
 
           if (rawRows.length > 0) {
@@ -594,7 +677,7 @@ export default function Home() {
             if (hasHeaders) {
               for (let c = 0; c < firstRow.length; c++) {
                 const cellVal = firstRow[c]?.toString().trim() || '';
-                if (/phone|number|mobile/i.test(cellVal)) {
+                if (/phone|number|mobile|contact/i.test(cellVal)) {
                   phoneIndex = c;
                 }
                 if (/name/i.test(cellVal)) {
@@ -609,8 +692,8 @@ export default function Home() {
                 let phoneMatches = 0;
                 let totalChecked = 0;
                 
-                // Scan first 15 rows for this column
-                for (let r = 0; r < Math.min(rawRows.length, 15); r++) {
+                // Scan first 20 rows for this column
+                for (let r = 0; r < Math.min(rawRows.length, 20); r++) {
                   const cellVal = rawRows[r][c]?.toString().trim();
                   if (cellVal) {
                     totalChecked++;
@@ -621,7 +704,6 @@ export default function Home() {
                   }
                 }
                 
-                // If more than 50% of the non-empty cells contain phone-like digits, mark this as the phone column!
                 if (totalChecked > 0 && (phoneMatches / totalChecked) >= 0.5) {
                   phoneIndex = c;
                   break;
@@ -644,20 +726,26 @@ export default function Home() {
               }
             }
 
-            // Extract rows into contacts
+            // Extract rows into contacts with deduplication and phone normalization
             const startRow = hasHeaders ? 1 : 0;
             const headerNames = hasHeaders ? firstRow.map(h => h?.toString().trim() || '') : [];
+            const seen = new Set<string>();
 
             for (let r = startRow; r < rawRows.length; r++) {
               const row = rawRows[r];
               if (!row || row.length === 0) continue;
 
-              const phoneVal = phoneIndex !== -1 ? row[phoneIndex]?.toString().trim() : '';
-              const nameVal = nameIndex !== -1 ? row[nameIndex]?.toString().trim() : '';
+              const rawPhone = phoneIndex !== -1 ? row[phoneIndex]?.toString().trim() : '';
+              const rawName = nameIndex !== -1 ? row[nameIndex]?.toString().trim() : '';
 
-              if (!phoneVal) continue;
+              if (!rawPhone) continue;
+              const cleanPhone = normalizePhoneNumber(rawPhone);
+              if (!cleanPhone) continue; // safely filter out non-phone numbers / bank a/c
 
-              // Extract any other columns as custom fields (using header name, or Column_N if no header)
+              if (seen.has(cleanPhone)) continue;
+              seen.add(cleanPhone);
+
+              // Extract any other columns as custom fields
               const customFields: Record<string, string> = {};
               for (let c = 0; c < row.length; c++) {
                 if (c !== phoneIndex && c !== nameIndex) {
@@ -667,15 +755,15 @@ export default function Home() {
               }
 
               contacts.push({
-                name: nameVal || '',
-                phone: phoneVal,
+                name: rawName || '',
+                phone: cleanPhone,
                 customFields
               });
             }
           }
 
           setParsedContacts(contacts);
-          setParsedFileStats(`Successfully parsed ${contacts.length} rows from file ${file.name}`);
+          setParsedFileStats(`Successfully parsed ${contacts.length} valid contacts from ${file.name}`);
         } catch (err: any) {
           console.error(err);
           setParsedFileStats(`Error parsing Excel/CSV file: ${err.message}`);
@@ -683,44 +771,19 @@ export default function Home() {
       };
       fileReader.readAsBinaryString(file);
     } else if (file.name.endsWith('.txt') || file.name.endsWith('.doc') || file.name.endsWith('.docx')) {
-      // Treat doc and docx as plain text extracts for simple matching (Node docx parser is too heavy for browser, simple text reader fallback)
       fileReader.onload = (event) => {
         try {
           const text = event.target?.result as string;
-          const lines = text.split('\n');
-          const contacts: typeof parsedContacts = [];
-
-          lines.forEach((line) => {
-            if (!line.trim()) return;
-            const parts = line.split(/[,\t]/); // split by comma or tab
-            if (parts.length >= 2) {
-              contacts.push({
-                name: parts[0].trim(),
-                phone: parts[1].trim(),
-                customFields: {}
-              });
-            } else {
-              // try to extract anything that looks like phone digits
-              const cleanDigits = parts[0].replace(/[^0-9+]/g, '');
-              if (cleanDigits.length >= 8) {
-                contacts.push({
-                  name: '',
-                  phone: cleanDigits,
-                  customFields: {}
-                });
-              }
-            }
-          });
-
+          const contacts = parseTextToContacts(text);
           setParsedContacts(contacts);
-          setParsedFileStats(`Parsed ${contacts.length} lines from file ${file.name}`);
+          setParsedFileStats(`Successfully parsed ${contacts.length} valid contacts from ${file.name}`);
         } catch (err: any) {
           setParsedFileStats(`Error reading text file: ${err.message}`);
         }
       };
       fileReader.readAsText(file);
     } else {
-      setParsedFileStats('Unsupported file format. Please upload Excel, CSV, or Text.');
+      setParsedFileStats('Unsupported file format. Please upload Excel, CSV, or Text file.');
     }
   };
 
